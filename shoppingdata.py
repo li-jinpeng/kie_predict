@@ -51,58 +51,81 @@ class SHOPPINGDATA(datasets.GeneratorBasedBuilder):
         ]
 
     def _generate_examples(self, filepaths):
-        for filepath in filepaths:
-            with open(filepath[0], "r", encoding="utf-8") as f:
-                data = json.load(f)
-            for doc in data["documents"]:
-                doc["pic_name"] = os.path.join(filepath, doc["pic_name"])
-                image, size = load_image(doc["pic_name"])
-                document = doc["document"]
-                tokenized_doc = {"input_ids": [], "bbox": []}
-                for line in document:
-                    tokenized_inputs = self.tokenizer(
-                        line["text"],
-                        add_special_tokens=False,
-                        return_offsets_mapping=True,
-                        return_attention_mask=False,
-                    )
-                    text_length = 0
-                    ocr_length = 0
-                    bbox = []
-                    last_box = None
-                    for token_id, offset in zip(tokenized_inputs["input_ids"], tokenized_inputs["offset_mapping"]):
-                        if token_id == 6:
-                            bbox.append(None)
-                            continue
-                        text_length += offset[1] - offset[0]
-                        tmp_box = []
-                        while ocr_length < text_length:
-                            ocr_word = line["words"].pop(0)
-                            ocr_length += len(
-                                self.tokenizer._tokenizer.normalizer.normalize_str(ocr_word["text"].strip())
-                            )
-                            tmp_box.append(simplify_bbox(ocr_word["box"]))
-                        if len(tmp_box) == 0:
-                            tmp_box = last_box
-                        bbox.append(normalize_bbox(merge_bbox(tmp_box), size))
-                        last_box = tmp_box
-                    bbox = [
-                        [bbox[i + 1][0], bbox[i + 1][1], bbox[i + 1][0], bbox[i + 1][1]] if b is None else b
-                        for i, b in enumerate(bbox)
-                    ]
-                    tokenized_inputs.update({"bbox": bbox})
-                    for i in tokenized_doc:
-                        tokenized_doc[i] = tokenized_doc[i] + tokenized_inputs[i]
-
-                chunk_size = 512
-                for chunk_id, index in enumerate(range(0, len(tokenized_doc["input_ids"]), chunk_size)):
-                    item = {}
-                    for k in tokenized_doc:
-                        item[k] = tokenized_doc[k][index : index + chunk_size]
-                    item.update(
-                        {
-                            "id": f"{doc['id']}_{chunk_id}",
-                            "image": image,
-                        }
-                    )
-                    yield f"{doc['id']}_{chunk_id}", item
+        with open('/home/lijinpeng/kie_predict/output/data.json', "r", encoding="utf-8") as f:
+            data = json.load(f)
+        for doc in data["documents"]:
+            doc["pic_path"] = os.path.join('/home/lijinpeng/kie_predict/pic_data', doc['pic_name'])
+            image, size = load_image(doc['pic_path'])
+            document = doc["document"]
+            tokenized_doc = {"input_ids": [], "bbox": []}
+            entities = []
+            entity_id_to_index_map = {}
+            empty_entity = set()
+            for line in document:
+                if len(line["text"]) == 0:
+                    empty_entity.add(line["id"])
+                    continue
+                tokenized_inputs = self.tokenizer(
+                    line["text"],
+                    add_special_tokens=False,
+                    return_offsets_mapping=True,
+                    return_attention_mask=False,
+                )
+                text_length = 0
+                ocr_length = 0
+                bbox = []
+                last_box = None
+                for token_id, offset in zip(tokenized_inputs["input_ids"], tokenized_inputs["offset_mapping"]):
+                    if token_id == 6:
+                        bbox.append(None)
+                        continue
+                    text_length += offset[1] - offset[0]
+                    tmp_box = []
+                    while ocr_length < text_length:
+                        ocr_word = line["words"].pop(0)
+                        ocr_length += len(
+                            self.tokenizer._tokenizer.normalizer.normalize_str(ocr_word["text"].strip())
+                        )
+                        tmp_box.append(simplify_bbox(ocr_word["box"]))
+                    if len(tmp_box) == 0:
+                        tmp_box = last_box
+                    bbox.append(normalize_bbox(merge_bbox(tmp_box), size))
+                    last_box = tmp_box
+                bbox = [
+                    [bbox[i + 1][0], bbox[i + 1][1], bbox[i + 1][0], bbox[i + 1][1]] if b is None else b
+                    for i, b in enumerate(bbox)
+                ]
+                tokenized_inputs.update({"bbox": bbox})
+                entity_id_to_index_map[line["id"]] = len(entities)
+                entities.append(
+                    {
+                        "start": len(tokenized_doc["input_ids"]),
+                        "end": len(tokenized_doc["input_ids"]) + len(tokenized_inputs["input_ids"]),
+                    }
+                )
+                for i in tokenized_doc:
+                    tokenized_doc[i] = tokenized_doc[i] + tokenized_inputs[i]
+            chunk_size = 512
+            for chunk_id, index in enumerate(range(0, len(tokenized_doc["input_ids"]), chunk_size)):
+                item = {}
+                for k in tokenized_doc:
+                    item[k] = tokenized_doc[k][index : index + chunk_size]
+                entities_in_this_span = []
+                global_to_local_map = {}
+                for entity_id, entity in enumerate(entities):
+                    if (
+                        index <= entity["start"] < index + chunk_size
+                        and index <= entity["end"] < index + chunk_size
+                    ):
+                        entity["start"] = entity["start"] - index
+                        entity["end"] = entity["end"] - index
+                        global_to_local_map[entity_id] = len(entities_in_this_span)
+                        entities_in_this_span.append(entity)
+                item.update(
+                    {
+                        "id": f"{doc['id']}_{chunk_id}",
+                        "image": image,
+                        "entities": entities_in_this_span,
+                    }
+                )
+                yield f"{doc['id']}_{chunk_id}", item
