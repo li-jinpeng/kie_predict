@@ -12,7 +12,38 @@ from transformers import AutoTokenizer
 class SHOPPINGDATA(datasets.GeneratorBasedBuilder):
 
     tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-base")
-
+    def _info(self):
+            return datasets.DatasetInfo(
+                features=datasets.Features(
+                    {
+                        "id": datasets.Value("string"),
+                        "input_ids": datasets.Sequence(datasets.Value("int64")),
+                        "bbox": datasets.Sequence(datasets.Sequence(datasets.Value("int64"))),
+                        "labels": datasets.Sequence(
+                            datasets.ClassLabel(
+                                names=["O", "B-QUESTION", "B-ANSWER", "B-HEADER", "I-ANSWER", "I-QUESTION", "I-HEADER"]
+                            )
+                        ),
+                        "image": datasets.Array3D(shape=(3, 224, 224), dtype="uint8"),
+                        "entities": datasets.Sequence(
+                            {
+                                "start": datasets.Value("int64"),
+                                "end": datasets.Value("int64"),
+                                "label": datasets.ClassLabel(names=["HEADER", "QUESTION", "ANSWER"]),
+                            }
+                        ),
+                        "relations": datasets.Sequence(
+                            {
+                                "head": datasets.Value("int64"),
+                                "tail": datasets.Value("int64"),
+                                "start_index": datasets.Value("int64"),
+                                "end_index": datasets.Value("int64"),
+                            }
+                        ),
+                    }
+                ),
+                supervised_keys=None,
+            )
     def _split_generators(self, dl_manager):
         test_files_for_many_langs = ['./output/data.json','./pic_data']
         return [
