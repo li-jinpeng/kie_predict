@@ -19,27 +19,7 @@ class SHOPPINGDATA(datasets.GeneratorBasedBuilder):
                         "id": datasets.Value("string"),
                         "input_ids": datasets.Sequence(datasets.Value("int64")),
                         "bbox": datasets.Sequence(datasets.Sequence(datasets.Value("int64"))),
-                        "labels": datasets.Sequence(
-                            datasets.ClassLabel(
-                                names=["O", "B-QUESTION", "B-ANSWER", "B-HEADER", "I-ANSWER", "I-QUESTION", "I-HEADER"]
-                            )
-                        ),
                         "image": datasets.Array3D(shape=(3, 224, 224), dtype="uint8"),
-                        "entities": datasets.Sequence(
-                            {
-                                "start": datasets.Value("int64"),
-                                "end": datasets.Value("int64"),
-                                "label": datasets.ClassLabel(names=["HEADER", "QUESTION", "ANSWER"]),
-                            }
-                        ),
-                        "relations": datasets.Sequence(
-                            {
-                                "head": datasets.Value("int64"),
-                                "tail": datasets.Value("int64"),
-                                "start_index": datasets.Value("int64"),
-                                "end_index": datasets.Value("int64"),
-                            }
-                        ),
                     }
                 ),
                 supervised_keys=None,
@@ -58,13 +38,7 @@ class SHOPPINGDATA(datasets.GeneratorBasedBuilder):
             image, size = load_image(doc['pic_path'])
             document = doc["document"]
             tokenized_doc = {"input_ids": [], "bbox": []}
-            entities = []
-            entity_id_to_index_map = {}
-            empty_entity = set()
             for line in document:
-                if len(line["text"]) == 0:
-                    empty_entity.add(line["id"])
-                    continue
                 tokenized_inputs = self.tokenizer(
                     line["text"],
                     add_special_tokens=False,
@@ -96,36 +70,18 @@ class SHOPPINGDATA(datasets.GeneratorBasedBuilder):
                     for i, b in enumerate(bbox)
                 ]
                 tokenized_inputs.update({"bbox": bbox})
-                entity_id_to_index_map[line["id"]] = len(entities)
-                entities.append(
-                    {
-                        "start": len(tokenized_doc["input_ids"]),
-                        "end": len(tokenized_doc["input_ids"]) + len(tokenized_inputs["input_ids"]),
-                    }
-                )
                 for i in tokenized_doc:
                     tokenized_doc[i] = tokenized_doc[i] + tokenized_inputs[i]
+
             chunk_size = 512
             for chunk_id, index in enumerate(range(0, len(tokenized_doc["input_ids"]), chunk_size)):
                 item = {}
                 for k in tokenized_doc:
                     item[k] = tokenized_doc[k][index : index + chunk_size]
-                entities_in_this_span = []
-                global_to_local_map = {}
-                for entity_id, entity in enumerate(entities):
-                    if (
-                        index <= entity["start"] < index + chunk_size
-                        and index <= entity["end"] < index + chunk_size
-                    ):
-                        entity["start"] = entity["start"] - index
-                        entity["end"] = entity["end"] - index
-                        global_to_local_map[entity_id] = len(entities_in_this_span)
-                        entities_in_this_span.append(entity)
                 item.update(
                     {
                         "id": f"{doc['id']}_{chunk_id}",
                         "image": image,
-                        "entities": entities_in_this_span,
                     }
                 )
                 yield f"{doc['id']}_{chunk_id}", item
