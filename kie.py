@@ -25,8 +25,7 @@ def get_label_list(labels):
 def my_predict(train_data_path,model_path,opath):
 
     datasets = load_dataset(
-        'json',
-        data_files = train_data_path,
+        os.path.abspath('/home/lijinpeng/kie_predict/shoppingdata.py'),
         keep_in_memory=True,
     )
     
