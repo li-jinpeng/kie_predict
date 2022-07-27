@@ -73,10 +73,10 @@ def generate_random_str(randomlength=16):
         random_str += base_str[random.randint(0, length)]
     return random_str
 
-def my_data_json(data,pic_dirpath,output)
+def my_data_json(data,pic_dirpath,output):
     j = generate_data(data, pic_dirpath)
     name = 'j'+ generate_random_str(20) + '.json'
-    path = open(os.path.join(output,name)
-    json.dump(j,path ,'w',encoding='utf-8') ,ensure_ascii = False)
+    path = open(os.path.join(output,name),'w',encoding='utf-8')
+    json.dump(j,path  ,ensure_ascii = False)
     return path
     
